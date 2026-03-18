@@ -1,0 +1,20 @@
+[build]
+builder = "NIXPACKS"
+
+# ── Scrape service: runs every 6 hours ─────────────────────────────────────
+[[services]]
+name = "scrape"
+startCommand = "python main.py scrape"
+cronSchedule = "0 */6 * * *"
+
+[services.build]
+builder = "NIXPACKS"
+
+# ── Post service: runs every 30 minutes ────────────────────────────────────
+[[services]]
+name = "post"
+startCommand = "python main.py post"
+cronSchedule = "*/30 * * * *"
+
+[services.build]
+builder = "NIXPACKS"
