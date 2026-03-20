@@ -182,11 +182,14 @@ See `.env.example` for all variables. Required for each phase:
 
 ## Railway Deployment
 
-`railway.toml` defines two cron services:
-- **scrape**: runs every 6 hours — `python main.py scrape`
-- **post**: runs every 30 min — `python main.py post`
+`railway.toml` defines four services:
+- **scrape**: cron every 6 hours — `python main.py scrape`
+- **post**: cron every 30 min — `python main.py post`
+- **bot**: long-running — `python main.py bot` (Telegram polling)
+- **stats**: cron daily 09:00 UTC — `python main.py stats`
 
-Local dev: `python main.py scrape` / `python main.py post`
+Additional CLI commands:
+- `python main.py health` — print JSON health check (exit 1 if errors)
 
 ---
 
@@ -194,10 +197,10 @@ Local dev: `python main.py scrape` / `python main.py post`
 
 | Phase | Scope                               | Status      |
 |-------|-------------------------------------|-------------|
-| 1     | `db.py` + `scraper.py` (arXiv only) | 🔨 In Progress |
-| 2     | `scorer.py` + `generator.py`        | Pending     |
-| 3     | `telegram_bot.py` + `poster.py`     | Pending     |
-| 4     | Railway deploy + monitoring         | Pending     |
+| 1     | `db.py` + `scraper.py` (arXiv only) | ✅ Done     |
+| 2     | `scorer.py` + `generator.py`        | ✅ Done     |
+| 3     | `telegram_bot.py` + `poster.py`     | ✅ Done     |
+| 4     | Railway deploy + monitoring         | ✅ Done     |
 
 ---
 

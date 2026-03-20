@@ -4,6 +4,8 @@ Usage:
   python main.py scrape    # Scrape → score → generate → enqueue → send Telegram previews
   python main.py post      # Post approved items to X; send any new previews to Telegram
   python main.py bot       # Run the Telegram approval bot in polling mode (long-running)
+  python main.py stats     # Send daily stats digest to Telegram
+  python main.py health    # Print health check to stdout
 """
 
 import asyncio
@@ -32,14 +34,21 @@ log = logging.getLogger("main")
 
 
 def cmd_scrape() -> None:
-    """Scrape → score → generate → enqueue (full Phase 2 pipeline)."""
+    """Scrape → score → generate → enqueue (full pipeline)."""
     init_db()
-    papers = scrape_all()
+
+    from src.monitor import alert
+
+    try:
+        papers = scrape_all()
+    except Exception as exc:
+        asyncio.run(alert("scrape_all() failed", exc))
+        raise
 
     # Score all papers; split into above/below threshold
     above, below = score_and_filter(papers)
 
-    # Persist all papers first (dedup handled by insert_paper)
+    # Persist all papers (dedup handled by insert_paper)
     stored_ids: list[int] = []
     new_count = 0
     for paper in papers:
@@ -51,14 +60,10 @@ def cmd_scrape() -> None:
             new_count += 1
             log.info("+ [%.3f] [%s] %s", paper.score, paper.source_id, paper.title[:70])
             stored_ids.append(row_id)
-        # Update score even for already-stored papers? Skipped — dedup means
-        # we skip them above. Score updates on re-scrape could be added later.
 
     log.info("Scrape done — %d new / %d total fetched", new_count, len(papers))
 
-    # For high-scoring new papers, generate thread drafts and enqueue
-    high_score_new = [p for p in above if not paper_exists(p.source, p.source_id) is False]
-    # Simpler: generate for papers we just stored that scored above threshold
+    # Generate thread drafts for high-scoring new papers
     above_ids = {p.source_id for p in above}
     queued = 0
     for row_id in stored_ids:
@@ -68,7 +73,11 @@ def cmd_scrape() -> None:
         if paper.source_id not in above_ids:
             log.debug("Score below threshold — skipping generation for %s", paper.source_id)
             continue
-        tweets = generate_thread(paper)
+        try:
+            tweets = generate_thread(paper)
+        except Exception as exc:
+            asyncio.run(alert(f"generate_thread failed for {paper.source_id}", exc))
+            continue
         if tweets:
             draft = "\n\n".join(tweets)
             enqueue(row_id, draft)
@@ -90,11 +99,15 @@ def cmd_post() -> None:
 
     from src.poster import post_approved
     from src.telegram_bot import send_previews_only
+    from src.monitor import alert
 
-    posted = post_approved()
+    try:
+        posted = post_approved()
+    except Exception as exc:
+        asyncio.run(alert("post_approved() failed", exc))
+        raise
     log.info("Posted %d thread(s) to X", posted)
 
-    # Also push any pending items that haven't been sent to Telegram yet
     sent = asyncio.run(send_previews_only())
     if sent:
         log.info("Sent %d new Telegram preview(s)", sent)
@@ -107,18 +120,40 @@ def cmd_bot() -> None:
     asyncio.run(run_approval_bot())
 
 
+def cmd_stats() -> None:
+    """Send daily stats digest to Telegram."""
+    init_db()
+    from src.monitor import send_daily_stats
+    ok = asyncio.run(send_daily_stats())
+    log.info("Stats sent: %s", ok)
+
+
+def cmd_health() -> None:
+    """Print health check results to stdout."""
+    init_db()
+    import json
+    from src.monitor import health_check
+    result = health_check()
+    print(json.dumps(result, indent=2))
+    if not result["ok"]:
+        sys.exit(1)
+
+
 def main() -> None:
     command = sys.argv[1] if len(sys.argv) > 1 else "scrape"
-    if command == "scrape":
-        cmd_scrape()
-    elif command == "post":
-        cmd_post()
-    elif command == "bot":
-        cmd_bot()
-    else:
+    dispatch = {
+        "scrape": cmd_scrape,
+        "post":   cmd_post,
+        "bot":    cmd_bot,
+        "stats":  cmd_stats,
+        "health": cmd_health,
+    }
+    fn = dispatch.get(command)
+    if fn is None:
         print(f"Unknown command: {command}")
-        print("Usage: python main.py [scrape|post|bot]")
+        print(f"Usage: python main.py [{' | '.join(dispatch)}]")
         sys.exit(1)
+    fn()
 
 
 if __name__ == "__main__":

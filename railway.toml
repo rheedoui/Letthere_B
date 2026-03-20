@@ -26,3 +26,12 @@ startCommand = "python main.py bot"
 
 [services.build]
 builder = "NIXPACKS"
+
+# ── Daily stats digest: every day at 09:00 UTC ──────────────────────────────
+[[services]]
+name = "stats"
+startCommand = "python main.py stats"
+cronSchedule = "0 9 * * *"
+
+[services.build]
+builder = "NIXPACKS"
