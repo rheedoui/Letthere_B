@@ -1,11 +1,12 @@
 """OptiX Bot — CLI entry point.
 
 Usage:
-  python main.py scrape    # Scrape sources, score, generate drafts, enqueue
-  python main.py generate  # (Re-)generate drafts for unqueued high-score papers
-  python main.py post      # Process approved queue and post to X (Phase 3)
+  python main.py scrape    # Scrape → score → generate → enqueue → send Telegram previews
+  python main.py post      # Post approved items to X; send any new previews to Telegram
+  python main.py bot       # Run the Telegram approval bot in polling mode (long-running)
 """
 
+import asyncio
 import logging
 import sys
 
@@ -77,29 +78,46 @@ def cmd_scrape() -> None:
 
     log.info("Pipeline done — %d papers queued for approval", queued)
 
-
-def cmd_generate() -> None:
-    """Re-run generator on papers that are already stored but not yet queued."""
-    init_db()
-    log.info("Generate command not yet implemented — use 'scrape' for full pipeline")
+    # Send Telegram previews for newly queued items
+    from src.telegram_bot import send_previews_only
+    sent = asyncio.run(send_previews_only())
+    log.info("Sent %d Telegram preview(s)", sent)
 
 
 def cmd_post() -> None:
-    # Phase 3: telegram_bot + poster
-    log.info("Post pipeline not yet implemented (Phase 3)")
+    """Post approved items to X and send previews for any new pending items."""
+    init_db()
+
+    from src.poster import post_approved
+    from src.telegram_bot import send_previews_only
+
+    posted = post_approved()
+    log.info("Posted %d thread(s) to X", posted)
+
+    # Also push any pending items that haven't been sent to Telegram yet
+    sent = asyncio.run(send_previews_only())
+    if sent:
+        log.info("Sent %d new Telegram preview(s)", sent)
+
+
+def cmd_bot() -> None:
+    """Run the Telegram approval bot in polling mode (long-running)."""
+    init_db()
+    from src.telegram_bot import run_approval_bot
+    asyncio.run(run_approval_bot())
 
 
 def main() -> None:
     command = sys.argv[1] if len(sys.argv) > 1 else "scrape"
     if command == "scrape":
         cmd_scrape()
-    elif command == "generate":
-        cmd_generate()
     elif command == "post":
         cmd_post()
+    elif command == "bot":
+        cmd_bot()
     else:
         print(f"Unknown command: {command}")
-        print("Usage: python main.py [scrape|generate|post]")
+        print("Usage: python main.py [scrape|post|bot]")
         sys.exit(1)
 
 

@@ -18,3 +18,11 @@ cronSchedule = "*/30 * * * *"
 
 [services.build]
 builder = "NIXPACKS"
+
+# ── Telegram bot: long-running approval listener ────────────────────────────
+[[services]]
+name = "bot"
+startCommand = "python main.py bot"
+
+[services.build]
+builder = "NIXPACKS"
